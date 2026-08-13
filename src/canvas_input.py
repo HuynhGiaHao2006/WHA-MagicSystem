@@ -1,9 +1,11 @@
 import tkinter as tk
+import math
 
 class Quire(tk.Frame):
+
     def __init__(self, master = None):
         super().__init__(master)
-        self.coordinates = []
+        self.coordinates = [] # Have no use right now but we'll see
         self.currentStrokeCoords = []
         self.strokes = []
 
@@ -42,7 +44,16 @@ class Quire(tk.Frame):
         self.strokes.append(self.currentStrokeCoords)
         self.currentStrokeCoords = []
 
-    def undo(self, event):
+        stroke_length = 0
+        prev_coords = self.strokes[-1][0]
+        for coords in self.strokes[-1][1:]:
+            stroke_length += math.sqrt((coords[0] - prev_coords[0])**2 + (coords[1] - prev_coords[1])**2)
+            prev_coords = coords
+        print(stroke_length)
+        if stroke_length < 10: # Set a limit to how short a stroke can be
+            self.undo()
+
+    def undo(self, event = None): # Undo stroke using 'Z'
         if not self.strokes:
             return
         print('test')
@@ -56,7 +67,7 @@ class Quire(tk.Frame):
                 self.coordinates.append((stroke[i][0], stroke[i][1]))
             self.coordinates.append((stroke[-1][0], stroke[-1][1]))
 
-    def clear(self,event):
+    def clear(self,event): # Clear canvas using 'C'
         self.canvas.delete('all')
         self.coordinates = []
         self.strokes = []
@@ -66,5 +77,5 @@ root = tk.Tk()
 quire = Quire(root)
 quire.pack()
 root.mainloop()
-if quire.coordinates:
-    print(quire.coordinates[-1])
+if quire.strokes:
+    print(quire.strokes[-1])
