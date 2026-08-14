@@ -1,12 +1,11 @@
 import math
-import iteround
 
 def Parser(strokes):
 
     def resample(strokes): # Standardizing by having a fixed number of evenly spaced points across the drawing
         total_length = 0 
-        number_of_points = 6
-        strokes_points = [0] * len(strokes) # Alloted number of points for each stroke
+        number_of_points = 128
+        strokes_points = [1.0] * len(strokes) # Alloted number of points for each stroke
         strokes_length = [] 
         resampled = [] 
 
@@ -21,22 +20,32 @@ def Parser(strokes):
             strokes_length.append(stroke_length)
 
         # Allot a number of points for each stroke
-        points_used = 0
-        maximum = (-1, 0)
-        for i in range(len(strokes) - 1):
-            strokes_points[i] = max(1, round(strokes_length[i]*number_of_points/total_length))
-            if strokes_points[i] > maximum[0]:
-                maximum = (strokes_points[i], i)
-            points_used += strokes_points[i]
-        if points_used == number_of_points:
-            strokes_points[-1] = 1
-            strokes_points[maximum[1]] -= 1
-        else: strokes_points[-1] = number_of_points - points_used
+        extra_points = []
+        for i in range(len(strokes)):
+            extra_points.append(strokes_length[i]*(number_of_points - len(strokes))/total_length)
+        if number_of_points < len(strokes):
+            remainders = [(i, x) for i, x in enumerate(extra_points)]
+            remainders.sort(key=lambda item: item[1], reverse = True)
+            for i in range(len(strokes) - number_of_points):
+                strokes_points[remainders[i][0]] -= 1
+        else:
+            floored_values = [int(x) for x in extra_points]
+            remainders_sum = number_of_points - len(strokes_points) - sum(floored_values)
+            remainders = [(i, x - int(x)) for i, x in enumerate(extra_points)]
+            remainders.sort(key=lambda item: (item[1], extra_points[item[0]] * (-1)), reverse = True)
+            for i in range(remainders_sum):
+                floored_values[remainders[i][0]] += 1
+            for i in range(len(floored_values)):
+                strokes_points[i] += floored_values[i]
+
 
         # Walk the original strokes paths and place evenly spaced points
         for i in range(len(strokes)):
             if strokes_points[i] == 1:
                 resampled.append([((strokes[i][0][0] + strokes[i][-1][0])/2, (strokes[i][0][1] + strokes[i][-1][1])/2)])
+                continue
+
+            if strokes_points[i] < 1:
                 continue
 
             standardized_stroke = [strokes[i][0]]
@@ -46,6 +55,9 @@ def Parser(strokes):
             points_placed = 1
             prev_point = strokes[i][0]
             while True:
+                if points_placed == strokes_points[i] - 1:
+                    standardized_stroke.append(strokes[i][-1])
+                    break
                 distance = math.sqrt((strokes[i][j][0] - prev_point[0])**2 + (strokes[i][j][1] - prev_point[1])**2) # Distance between the current two points
                 if distance < remaining:
                     remaining -= distance
@@ -58,13 +70,7 @@ def Parser(strokes):
                     points_placed += 1
                     prev_point = (temp_x, temp_y)
                     remaining = segment_length
-                if points_placed == strokes_points[i] - 1:
-                    standardized_stroke.append(strokes[i][-1])
-                    break
             resampled.append(standardized_stroke)
 
         return resampled
-                        
-    def 
-
         
