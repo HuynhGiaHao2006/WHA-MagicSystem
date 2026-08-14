@@ -1,10 +1,9 @@
 import math
 
 def Parser(strokes):
-
-    def resample(strokes): # Standardizing by having a fixed number of evenly spaced points across the drawing
+    number_of_points = 128
+    def resample(strokes): # Standardize by having a fixed number of evenly spaced points across the drawing
         total_length = 0 
-        number_of_points = 128
         strokes_points = [1.0] * len(strokes) # Alloted number of points for each stroke
         strokes_length = [] 
         resampled = [] 
@@ -74,3 +73,25 @@ def Parser(strokes):
 
         return resampled
         
+    def reposition_and_resize(strokes: list):
+        fixed_size = 45
+        total_coords = (0, 0)
+        for stroke in strokes:
+            for coords in stroke:
+                total_coords = (total_coords[0] + coords[0], total_coords[1] + coords[1])
+        average_coords = (total_coords[0]/number_of_points, total_coords[1]/number_of_points)
+
+        total_distance = 0
+        for stroke in strokes:
+            for i in range(len(stroke)):
+                stroke[i] = (stroke[i][0] - average_coords[0], stroke[i][1] - average_coords[1])
+                total_distance += math.sqrt((stroke[i][0])**2 + (stroke[i][1])**2)
+        average_distance = total_distance/number_of_points
+        for stroke in strokes:
+            for i in range(len(stroke)):
+                stroke[i] = (stroke[i][0]*fixed_size/average_distance, stroke[i][1]*fixed_size/average_distance)
+
+        return strokes
+
+    def rotate(strokes):
+        pass
