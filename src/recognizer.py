@@ -1,4 +1,5 @@
 import math
+import iteround
 
 def Parser(strokes):
 
@@ -64,6 +65,6 @@ def Parser(strokes):
 
         return resampled
                         
-
+    def 
 
         
