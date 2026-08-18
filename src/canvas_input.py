@@ -1,11 +1,20 @@
 import tkinter as tk
 import math
+import time
+from recognizer import Parser, resample, reposition_and_resize
+from templates_visualizer import visualize
+from strokes_grouper import groupStrokes
+
+class State:
+
+    def __init__(self):
+        pass
 
 class Quire(tk.Frame):
 
     def __init__(self, master = None):
         super().__init__(master)
-        self.coordinates = [] # Have no use right now but we'll see
+        self.states = [[]]
         self.currentStrokeCoords = []
         self.strokes = []
 
@@ -27,7 +36,6 @@ class Quire(tk.Frame):
                                                  fill = 'black', smooth = True, splinesteps = 5, capstyle = 'round')
         self.last_x = event.x
         self.last_y = event.y
-        self.coordinates.append((event.x, event.y))
         self.currentStrokeCoords.append((event.x, event.y))
 
     def drag(self, event):
@@ -35,28 +43,26 @@ class Quire(tk.Frame):
                                  fill = 'black', smooth = True, splinesteps = 5, capstyle = 'round')
         self.last_x = event.x
         self.last_y = event.y
-        self.coordinates.append((event.x, event.y))
         self.currentStrokeCoords.append((event.x, event.y))
 
     def release(self, event):
-        self.coordinates.append((event.x, event.y))
         self.currentStrokeCoords.append((event.x, event.y))
         self.strokes.append(self.currentStrokeCoords)
         self.currentStrokeCoords = []
+
+        self.states.append(groupStrokes(self.states[-1], self.strokes[-1]))
 
         stroke_length = 0
         prev_coords = self.strokes[-1][0]
         for coords in self.strokes[-1][1:]:
             stroke_length += math.sqrt((coords[0] - prev_coords[0])**2 + (coords[1] - prev_coords[1])**2)
             prev_coords = coords
-        print(stroke_length)
         if stroke_length < 10: # Set a limit to how short a stroke can be
             self.undo()
 
     def undo(self, event = None): # Undo stroke using 'Z'
         if not self.strokes:
             return
-        print('test')
         self.canvas.delete('all')
         self.coordinates = []
         self.strokes.pop()
@@ -66,16 +72,18 @@ class Quire(tk.Frame):
                                          fill = 'black', smooth = True, splinesteps = 5, capstyle = 'round')
                 self.coordinates.append((stroke[i][0], stroke[i][1]))
             self.coordinates.append((stroke[-1][0], stroke[-1][1]))
+        self.states.pop()
 
     def clear(self,event): # Clear canvas using 'C'
         self.canvas.delete('all')
         self.coordinates = []
         self.strokes = []
+        self.states = [[]]
 
-
-root = tk.Tk()
-quire = Quire(root)
-quire.pack()
-root.mainloop()
-if quire.strokes:
-    print(quire.strokes[-1])
+if __name__ == "__main__":
+    root = tk.Tk()
+    quire = Quire(root)
+    quire.pack()
+    root.mainloop()
+    for group in quire.states[-1]:
+        print(Parser(group, 64))
