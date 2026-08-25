@@ -9,7 +9,8 @@ from scipy.spatial.distance import cdist
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-templates_path = os.path.join(script_dir, 'templates.json')
+signs_templates_path = os.path.join(script_dir, 'signs_templates.json')
+sigils_templates_path = os.path.join(script_dir, 'sigils_templates.json')
 
 
 def resample(strokes, number_of_points): # Standardize by having a fixed number of evenly spaced points across the drawing
@@ -106,9 +107,10 @@ def reposition_and_resize(strokes: list, number_of_points):
 def rotate(strokes):
     pass
 
-def recognize(strokes, number_of_points):
+def recognize(strokes, number_of_points, type = 'signs'):
     evaluation = {}
-    with open(templates_path, 'r') as f:
+    path = signs_templates_path if type == 'signs' else sigils_templates_path
+    with open(path, 'r') as f:
         templates = json.load(f)
     to_be_evaluated = list(itertools.chain.from_iterable(strokes))
     for component, point_cloud in templates.items():
@@ -122,9 +124,11 @@ def recognize(strokes, number_of_points):
     for key, values in evaluation.items():
         if values > prediction[1]:
             prediction = (key, values)
-    return re.sub(r'\d+', '', prediction[0])
+    return (re.sub(r'\d+', '', prediction[0]), prediction[1])
 
-def Parser(inputStrokes, number):
+def Parser(inputStrokes, number, type = 'signs'):
+    standardized = reposition_and_resize(resample(inputStrokes, number), number)
+    return recognize(standardized, number, type)
 
-    return recognize(reposition_and_resize(resample(inputStrokes, number), number), number)
-
+def Scorer():
+    return
