@@ -11,9 +11,10 @@ from scipy.spatial.distance import cdist
 script_dir = os.path.dirname(os.path.abspath(__file__))
 signs_templates_path = os.path.join(script_dir, 'signs_templates.json')
 sigils_templates_path = os.path.join(script_dir, 'sigils_templates.json')
+clean_templates_path = os.path.join(script_dir, 'clean_templates.json')
 
 
-def resample(strokes, number_of_points): # Standardize by having a fixed number of evenly spaced points across the drawing
+def resample(strokes, number_of_points = 64): # Standardize by having a fixed number of evenly spaced points across the drawing
     total_length = 0 
     strokes_points = [1.0] * len(strokes) # Alloted number of points for each stroke
     strokes_length = [] 
@@ -84,7 +85,7 @@ def resample(strokes, number_of_points): # Standardize by having a fixed number 
 
     return resampled
     
-def reposition_and_resize(strokes: list, number_of_points):
+def reposition_and_resize(strokes: list, number_of_points = 64):
     fixed_size = 45
     total_coords = (0, 0)
     for stroke in strokes:
@@ -107,7 +108,7 @@ def reposition_and_resize(strokes: list, number_of_points):
 def rotate(strokes):
     pass
 
-def recognize(strokes, number_of_points, type = 'signs'):
+def recognize(strokes, number_of_points = 64, type = 'signs'):
     evaluation = {}
     path = signs_templates_path if type == 'signs' else sigils_templates_path
     with open(path, 'r') as f:
@@ -128,7 +129,56 @@ def recognize(strokes, number_of_points, type = 'signs'):
 
 def Parser(inputStrokes, number, type = 'signs'):
     standardized = reposition_and_resize(resample(inputStrokes, number), number)
-    return recognize(standardized, number, type)
+    symbol = recognize(standardized, number, type)[0]
+    return symbol, standardized
 
-def Scorer():
-    return
+def kabsch(A, B):
+    H = A.T @ B
+    U, S, Vt = np.linalg.svd(H)
+    R = U @ Vt
+    if np.linalg.det(R) < 0:
+        Vt[-1:] *= -1
+        R = U @ Vt
+    return R
+
+def icp(A, B, max_iterations = 20, tolerance = 1e-4):
+    A_array = A.copy()
+    B_array = B.copy()
+    R = np.eye(2)
+    prev_cost = float('inf')
+    for i in range(max_iterations):
+        cost_matrix = cdist(A_array, B_array)
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        total_cost = cost_matrix[row_ind, col_ind].sum()
+        
+        if abs(prev_cost - total_cost) < tolerance:
+            break
+        prev_cost = total_cost
+        A_matched = A_array[row_ind]
+        B_matched = B_array[col_ind]
+        R_step = kabsch(A_matched, B_matched)
+        R = R @ R_step
+        A_array = A_array @ R_step
+    return A_array
+
+def Scorer(pointCloud, symbol, coarse_angle_offset = 0, number_of_points = 64):
+    if symbol == 'No match':
+        return 0
+    with open(clean_templates_path, 'r') as f:
+        templates = json.load(f)
+    pointCloud_array = np.array(list(itertools.chain.from_iterable(pointCloud)))
+    cos_a = np.cos(-coarse_angle_offset)
+    sin_a = np.sin(-coarse_angle_offset)
+    R_reverse = np.array([
+        [cos_a, -sin_a],
+        [sin_a,  cos_a]
+    ])
+    pre_rotated = pointCloud_array @ R_reverse
+    clean_sample = np.array(list(itertools.chain.from_iterable(templates[symbol])))
+    upright_pointCloud = icp(pre_rotated, clean_sample)
+    cost_matrix = cdist(upright_pointCloud, clean_sample)
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    total_distance = cost_matrix[row_ind, col_ind].sum()
+    value = float(total_distance/number_of_points)
+    score = round(100/(1+0.05*value), 3)
+    return score

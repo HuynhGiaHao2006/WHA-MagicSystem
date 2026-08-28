@@ -11,8 +11,8 @@ def groupStrokes(current_groups, inputStroke, type = 'signs', threshold = 25):
     # Group new stroke with existing groups
     groups_list = [group for group in current_groups]
     if not groups_list:
-        symbol, score = Parser([inputStroke], 64, type)
-        # score = Scorer(new_group_strokes, new_group_symbol)
+        symbol, standardized = Parser([inputStroke], 64, type)
+        score = Scorer(standardized, symbol)
         groups_list.append(([inputStroke], symbol, score))
         return groups_list
 
@@ -24,8 +24,8 @@ def groupStrokes(current_groups, inputStroke, type = 'signs', threshold = 25):
             new_group_strokes += group[0]
             continue
         else: updated_groups_list.append(group)
-    new_group_symbol, new_group_score = Parser(new_group_strokes, 64, type)
-    # new_group_score = Scorer(new_group_strokes, new_group_symbol)
+    new_group_symbol, standardized = Parser(new_group_strokes, 64, type)
+    new_group_score = Scorer(standardized, new_group_symbol)
     updated_groups_list.append((new_group_strokes, new_group_symbol, new_group_score))
     return updated_groups_list
 
@@ -36,9 +36,9 @@ class Quire(tk.Frame):
         self.states = [{'signGroups': [], # List of sign groups in the form of a tuple of strokes coords [0], symbol [1] and score [2]
                         'sigilGroups': [], # List of sigil groups 
                         }]
+        self.labels = []
         self.currentStrokeCoords = []
         self.strokes = []
-        self.labels = []
 
 
         self.brushSize = 5
@@ -92,7 +92,7 @@ class Quire(tk.Frame):
             self.label()
         else:
             new_signGroups = groupStrokes(self.states[-1]['signGroups'], self.strokes[-1])
-            new_sigilGroups = groupStrokes(self.states[-1]['sigilGroups'], self.strokes[-1], 'sigils', 40)
+            new_sigilGroups = groupStrokes(self.states[-1]['sigilGroups'], self.strokes[-1], 'sigils', 50)
             new_state = {'signGroups': new_signGroups, 'sigilGroups': new_sigilGroups}
             self.states.append(new_state)
 
@@ -110,13 +110,14 @@ class Quire(tk.Frame):
             min_y = min(y for x, y in sigil_coords)
             max_x = max(x for x, y in sigil_coords)
             max_y = max(y for x, y in sigil_coords)
-            self.labels.append(self.canvas.create_rectangle(min_x - 3, min_y - 3, max_x + 3, max_y + 3, outline='#73C9BC', width=2))
-            self.labels.append(self.canvas.create_text(min_x - 5, min_y - 3, fill='black', font='Helvetica 9', 
-                                                    text=sigil[1], anchor = 'e',))
+            if sigil[1] != 'No match':
+                self.labels.append(self.canvas.create_rectangle(min_x - 3, min_y - 3, max_x + 3, max_y + 3, outline='#73C9BC', width=2))
+                self.labels.append(self.canvas.create_text(min_x - 5, min_y - 3, fill='black', font='Helvetica 9', 
+                                                        text=f'{sigil[1]} {sigil[2]}', anchor = 'e',))
 
         if self.states[-1]['signGroups']:
             for sign in self.states[-1]['signGroups']:
-                if not self.states[-1]['sigilGroups'] or sign[0][0] not in sigil[0]:
+                if not self.states[-1]['sigilGroups'] or sigil[1] == 'No match' or not any(sign[0][0] is s for s in sigil[0]):
                     coords = list(itertools.chain.from_iterable(sign[0]))
                     min_x = min(x for x, y in coords)
                     min_y = min(y for x, y in coords)
@@ -124,12 +125,12 @@ class Quire(tk.Frame):
                     max_y = max(y for x, y in coords)
                     self.labels.append(self.canvas.create_rectangle(min_x - 3, min_y - 3, max_x + 3, max_y + 3, outline='#73C9BC', width=2))
                     self.labels.append(self.canvas.create_text(min_x - 5, min_y - 3, fill='black', font='Helvetica 9', 
-                                                            text=sign[1], anchor = 'e',))
+                                                            text=f'{sign[1]} {sign[2]}', anchor = 'e',))
 
     def undo(self, event = None): # Undo stroke using 'Z'
         if not self.strokes:
             return
-        self.canvas.delete('all')
+        self.canvas.delete('!keep')
         self.coordinates = []
         self.strokes.pop()
         for stroke in self.strokes:
