@@ -159,26 +159,33 @@ def icp(A, B, max_iterations = 20, tolerance = 1e-4):
         R_step = kabsch(A_matched, B_matched)
         R = R @ R_step
         A_array = A_array @ R_step
-    return A_array
+    angle_rad = np.arctan2(R[1, 0], R[0, 0])
+    return A_array, angle_rad
 
-def Scorer(pointCloud, symbol, coarse_angle_offset = 0, number_of_points = 64):
+number_of_segments = 4
+def Scorer(pointCloud, symbol, number_of_points = 64):
     if symbol == 'No match':
-        return 0
+        return 0, 0
     with open(clean_templates_path, 'r') as f:
         templates = json.load(f)
     pointCloud_array = np.array(list(itertools.chain.from_iterable(pointCloud)))
-    cos_a = np.cos(-coarse_angle_offset)
-    sin_a = np.sin(-coarse_angle_offset)
-    R_reverse = np.array([
-        [cos_a, -sin_a],
-        [sin_a,  cos_a]
-    ])
-    pre_rotated = pointCloud_array @ R_reverse
-    clean_sample = np.array(list(itertools.chain.from_iterable(templates[symbol])))
-    upright_pointCloud = icp(pre_rotated, clean_sample)
-    cost_matrix = cdist(upright_pointCloud, clean_sample)
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-    total_distance = cost_matrix[row_ind, col_ind].sum()
-    value = float(total_distance/number_of_points)
-    score = round(100/(1+0.05*value), 3)
-    return score
+    values = []
+    for i in range(number_of_segments):
+        angle_segment = 2*math.pi*(i+1)/number_of_segments
+        cos_a = np.cos(-angle_segment)
+        sin_a = np.sin(-angle_segment)
+        R_reverse = np.array([
+            [cos_a, -sin_a],
+            [sin_a,  cos_a]
+        ])
+        pre_rotated = pointCloud_array @ R_reverse
+        clean_sample = np.array(list(itertools.chain.from_iterable(templates[symbol])))
+        upright_pointCloud, angle = icp(pre_rotated, clean_sample)
+        cost_matrix = cdist(upright_pointCloud, clean_sample)
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        total_distance = cost_matrix[row_ind, col_ind].sum()
+        value = float(total_distance/number_of_points)
+        values.append((value, angle - angle_segment))
+    matched = min(values, key=lambda item: item[0])
+    score = round(100/(1+0.05*matched[0]), 3)
+    return score, round((matched[1]*180/math.pi)%360, 3)

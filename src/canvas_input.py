@@ -1,11 +1,11 @@
 import tkinter as tk
 import math
-import time
 import itertools
 import numpy as np
+import cv2
+from PIL import Image, ImageDraw
 from scipy.spatial.distance import cdist
 from recognizer import Parser, Scorer, resample, reposition_and_resize
-from templates_visualizer import visualize
 
 minRadius = 150
 def ringCheck(ringGroups, lockedRing, inputStroke, threshold = 5):
@@ -82,8 +82,8 @@ def groupStrokes(current_groups, inputStroke, type = 'signs', threshold = 25):
     groups_list = [group for group in current_groups]
     if not groups_list:
         symbol, standardized = Parser([inputStroke], 64, type)
-        score = Scorer(standardized, symbol)
-        groups_list.append(([inputStroke], symbol, score))
+        score, angle = Scorer(standardized, symbol)
+        groups_list.append(([inputStroke], symbol, score, angle))
         return groups_list
 
     updated_groups_list = []
@@ -95,18 +95,41 @@ def groupStrokes(current_groups, inputStroke, type = 'signs', threshold = 25):
             continue
         else: updated_groups_list.append(group)
     new_group_symbol, standardized = Parser(new_group_strokes, 64, type)
-    new_group_score = Scorer(standardized, new_group_symbol)
-    updated_groups_list.append((new_group_strokes, new_group_symbol, new_group_score))
+    new_group_score, new_group_angle = Scorer(standardized, new_group_symbol)
+    updated_groups_list.append((new_group_strokes, new_group_symbol, new_group_score, new_group_angle))
     return updated_groups_list
+
+def rasterize(strokes, canvasWidth, canvasHeight, brushSize):
+    from PIL import Image, ImageDraw
+    import numpy as np
+
+    img = Image.new('L', (canvasWidth, canvasHeight), 255)
+    draw = ImageDraw.Draw(img)
+    for stroke in strokes:
+        draw.circle(stroke[0], brushSize / 2, fill = 0)
+        draw.circle(stroke[-1], brushSize / 2, fill = 0)
+        draw.line(stroke, fill = 0, width = brushSize, joint = 'curve')
+    array = np.array(img)
+    return array
+
+def addStrokeRasterized(inputStroke, array, brushSize):
+    img = Image.fromarray(array, 'L')
+    draw = ImageDraw.Draw(img)
+    draw.circle(inputStroke[0], brushSize / 2, fill = 0)
+    draw.circle(inputStroke[-1], brushSize / 2, fill = 0)
+    draw.line(inputStroke, fill = 0, width = brushSize, joint = 'curve')
+    return_array = np.array(img)
+    return return_array
 
 FONT_LABEL = ("Palatino Linotype", 10)
 class Quire(tk.Frame):
     def __init__(self, master = None):
         super().__init__(master)
-        self.states = [{'signGroups': [], # List of groups in the form of a tuple of strokes coords [0], symbol [1] and score [2]
+        self.states = [{'signGroups': [], # List of groups in the form of a tuple of strokes coords [0], symbol [1], score [2] and angle [3]
                         'sigilGroups': [], 
                         'ringGroups': [], # List of groups in the form of a list of strokes coords
                         'lockedRing': ([], (0, 0), 0), # Tuple of stroke coords [0], center_coords [1] and radius [2]
+                        'rasterized': [] # 2D binary array of the canvas, depicting which pixels are filled
                         }]
         self.labels = []
         self.currentStrokeCoords = []
@@ -171,21 +194,24 @@ class Quire(tk.Frame):
         else:
             new_signGroups = self.states[-1]['signGroups']
             new_sigilGroups = self.states[-1]['sigilGroups']
+            new_rasterized = self.states[-1]['rasterized']
             new_lockedRing, new_ringGroups = ringCheck(self.states[-1]['ringGroups'], self.states[-1]['lockedRing'], self.strokes[-1])
             if self.states[-1]['lockedRing'][0]:
+                new_rasterized = addStrokeRasterized(self.strokes[-1], self.states[-1]['rasterized'], self.brushSize)
                 if not self.strokes[-1] is new_lockedRing[0][0]: # new stroke has to be put at the start of the list
                     new_signGroups = groupStrokes(self.states[-1]['signGroups'], self.strokes[-1], 'signs', self.signGroupingThreshold)
                     new_sigilGroups = groupStrokes(self.states[-1]['sigilGroups'], self.strokes[-1], 'sigils', self.sigilGroupingThreshold)
             else:
                 if new_lockedRing[0]:
+                    new_rasterized = rasterize(self.strokes, self.canvasWidth, self.canvasHeight, self.brushSize)
                     self.signGroupingThreshold = min(25, 0.125*new_lockedRing[2])
-                    self.sigilGroupingThreshold = min(50, 0.25*new_lockedRing[2])
+                    self.sigilGroupingThreshold = min(40, 0.2*new_lockedRing[2])
                     for stroke in self.strokes:
                         if not any(stroke is s for s in new_lockedRing[0]):
                             new_signGroups = groupStrokes(new_signGroups, stroke, 'signs', self.signGroupingThreshold)
                             new_sigilGroups = groupStrokes(new_sigilGroups, stroke, 'sigils', self.sigilGroupingThreshold)
             new_state = {'signGroups': new_signGroups, 'sigilGroups': new_sigilGroups,
-                        'ringGroups': new_ringGroups, 'lockedRing': new_lockedRing}
+                        'ringGroups': new_ringGroups, 'lockedRing': new_lockedRing, 'rasterized': new_rasterized}
             self.states.append(new_state)
 
             if self.labels:
@@ -226,7 +252,7 @@ class Quire(tk.Frame):
             if sigil[1] != 'No match':
                 self.labels.append(self.canvas.create_rectangle(min_x - 3, min_y - 3, max_x + 3, max_y + 3, outline='#73C9BC', width=2))
                 self.labels.append(self.canvas.create_text(min_x - 5, min_y - 3, fill='black', font=FONT_LABEL, 
-                                                           text=f'{sigil[1]} {sigil[2]}', anchor = 'e',))
+                                                           text=f'{sigil[1]} {sigil[2]} {sigil[3]}', anchor = 'e',))
 
         if self.states[-1]['signGroups']:
             for sign in self.states[-1]['signGroups']:
@@ -239,7 +265,7 @@ class Quire(tk.Frame):
                     self.labels.append(self.canvas.create_rectangle(min_x - 3, min_y - 3, max_x + 3, max_y + 3, outline='#73C9BC', width=2))
                     if sign[1] != 'No match':
                         self.labels.append(self.canvas.create_text(min_x - 5, min_y - 3, fill='black', font=FONT_LABEL, 
-                                                                    text=f'{sign[1]} {sign[2]}', anchor = 'e',))
+                                                                    text=f'{sign[1]} {sign[2]} {sign[3]}', anchor = 'e',))
 
     def undo(self, event = None): # Undo stroke using 'Z'
         if not self.strokes:
@@ -256,7 +282,6 @@ class Quire(tk.Frame):
         self.states.pop()
         self.label()
 
-
     def clear(self, event = None): # Clear canvas using 'C'
         self.canvas.delete('all')
         self.coordinates = []
@@ -265,6 +290,7 @@ class Quire(tk.Frame):
                         'sigilGroups': [],
                         'ringGroups': [],
                         'lockedRing': ([], (0, 0), 0),
+                        'rasterized': []
                         }]
 
 if __name__ == "__main__":
@@ -272,4 +298,7 @@ if __name__ == "__main__":
     quire = Quire(root)
     quire.pack()
     root.mainloop()
-    #print(quire.states[-1]['lockedRing'][2])
+    array = quire.states[-1]['rasterized']
+    img = Image.fromarray(array, 'L')
+    img.show()
+    
