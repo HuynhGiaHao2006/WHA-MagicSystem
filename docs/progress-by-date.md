@@ -49,6 +49,27 @@
 - Learn about floodfilling and cv2.findContours and how they can be used for ring closure checking while dealing with weird strokes dividing inner regions into smalller counterparts and what not
 - Redesign (not yet implemented) the flow of strokes parsing, having symbols grouping wait until a locked ring occurs, in order to have grouping thresholds proportionate to the spell size (which minimizes false grouping for small spell) and remove the need to implement an algorithm to remove a stroke from an existing group and reparse it.
 ### 4/10
-
+- Implement the flow redesign
+- Add a circularity for the ringCheck algorithm
+- Add a label for the ring that serves both as a guide (when a ring is not yet detected) and a depiction of the fit circle computed by ringCheck.
 ### 5/10
-
+- Modify the the Scorer to start from n different starting angle offsets and choose the one with the highest evaluation to minimize getting stuck at a local minima
+- Scorer now also output the rotation of the symbol (compared to being upright like in the clean samples)
+### 6/10
+-
+### 7/10
+- Implement the rasterize algorithm - first step of checking for ring closure
+### 8/10
+- Implement closure checking. Minor modification to some constants
+### 9/10
+-
+### 10/10
+-
+### 11/10
+-
+### 12/10
+-
+### 13/10
+-
+### 14/10
+-

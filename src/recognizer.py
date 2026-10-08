@@ -13,7 +13,7 @@ signs_templates_path = os.path.join(script_dir, 'signs_templates.json')
 sigils_templates_path = os.path.join(script_dir, 'sigils_templates.json')
 clean_templates_path = os.path.join(script_dir, 'clean_templates.json')
 
-
+rounding = 1
 def resample(strokes, number_of_points = 64): # Standardize by having a fixed number of evenly spaced points across the drawing
     total_length = 0 
     strokes_points = [1.0] * len(strokes) # Alloted number of points for each stroke
@@ -120,7 +120,7 @@ def recognize(strokes, number_of_points = 64, type = 'signs'):
         row_ind, col_ind = linear_sum_assignment(distance_matrix)
         total_distance = distance_matrix[row_ind, col_ind].sum()
         value = float(total_distance/number_of_points)
-        evaluation.update({component: round(1/(1+0.05*value), 3)})
+        evaluation.update({component: round(1/(1+0.05*value), rounding)})
     prediction = ('No match', 0.67)
     for key, values in evaluation.items():
         if values > prediction[1]:
@@ -187,5 +187,5 @@ def Scorer(pointCloud, symbol, number_of_points = 64):
         value = float(total_distance/number_of_points)
         values.append((value, angle - angle_segment))
     matched = min(values, key=lambda item: item[0])
-    score = round(100/(1+0.05*matched[0]), 3)
-    return score, round((matched[1]*180/math.pi)%360, 3)
+    score = round(100/(1+0.05*matched[0]), rounding)
+    return score, round((matched[1]*180/math.pi)%360, rounding)

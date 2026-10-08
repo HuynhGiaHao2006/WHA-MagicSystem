@@ -8,6 +8,7 @@ from scipy.spatial.distance import cdist
 from recognizer import Parser, Scorer, resample, reposition_and_resize
 
 minRadius = 150
+circularity_threshold = 21
 def ringCheck(ringGroups, lockedRing, inputStroke, threshold = 5):
     # Kasa circle fitting
     def Kasa_compute(group_strokes): # Used for updating locked ring's center and radius
@@ -42,7 +43,6 @@ def ringCheck(ringGroups, lockedRing, inputStroke, threshold = 5):
         radius = np.sqrt(C + x_center**2 + y_center**2)
 
         # Calculate circularity
-        points = list(itertools.chain.from_iterable(group_strokes))
         offsets = []
         for i in range(len(x)):
             offsets.append(abs(math.sqrt((x[i] - x_center)**2 + (y[i] - y_center)**2) - radius))
@@ -53,7 +53,7 @@ def ringCheck(ringGroups, lockedRing, inputStroke, threshold = 5):
         gaps = list((angles[i+1]-angles[i]) for i in range(len(angles) - 1)) + [2*math.pi + angles[0] - angles[-1]]
         biggest_gap = max(gaps)
         
-        condition = [biggest_gap < math.pi, radius > minRadius, circularity < 25] # Can change the circularity threshold later
+        condition = [biggest_gap < math.pi, radius > minRadius, circularity < circularity_threshold]
         Ring = (group_strokes, (x_center, y_center), radius) if all(condition) else ([], (0, 0), 0)
         return Ring
 
@@ -121,6 +121,40 @@ def addStrokeRasterized(inputStroke, array, brushSize):
     return_array = np.array(img)
     return return_array
 
+def closureCheck(rasterizedArray):
+    num_of_labels, enclosedRegions = cv2.connectedComponents(rasterizedArray, connectivity=8)
+    if num_of_labels == 2:
+        return False, True
+    if num_of_labels > 3:
+        return True, False
+    valid = False
+    for label in range(1, num_of_labels):
+        region_mask = np.uint8(enclosedRegions == label)
+        contour = cv2.findContours(region_mask, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_NONE)[0][0]
+        coords = np.asarray(contour.squeeze(axis = 1))
+        x = coords[:, 0]
+        y = coords[:, 1]
+        ones = np.ones_like(x)
+    
+        M = np.column_stack((x, y, ones))
+        b = x**2 + y**2
+    
+        A, B, C = np.linalg.lstsq(M, b, rcond=None)[0]
+    
+        x_center = A/2
+        y_center = B/2
+        radius = np.sqrt(C + x_center**2 + y_center**2)
+
+        # Calculate circularity
+        offsets = []
+        for i in range(len(x)):
+            offsets.append(abs(math.sqrt((x[i] - x_center)**2 + (y[i] - y_center)**2) - radius))
+        circularity = (sum(offsets)*300/len(offsets))/radius
+        if radius > minRadius * 0.9 and circularity < circularity_threshold + 1:
+            valid = True
+        
+    return True, valid
+
 FONT_LABEL = ("Palatino Linotype", 10)
 class Quire(tk.Frame):
     def __init__(self, master = None):
@@ -134,9 +168,11 @@ class Quire(tk.Frame):
         self.labels = []
         self.currentStrokeCoords = []
         self.strokes = []
+        self.closed = False
+        self.valid = True
+        
         self.signGroupingThreshold = 25
-        self.sigilGroupingThreshold = 50
-
+        self.sigilGroupingThreshold = 40
         self.brushSize = 5
         self.canvasWidth = 800
         self.canvasHeight = 600
@@ -196,14 +232,17 @@ class Quire(tk.Frame):
             new_sigilGroups = self.states[-1]['sigilGroups']
             new_rasterized = self.states[-1]['rasterized']
             new_lockedRing, new_ringGroups = ringCheck(self.states[-1]['ringGroups'], self.states[-1]['lockedRing'], self.strokes[-1])
-            if self.states[-1]['lockedRing'][0]:
-                new_rasterized = addStrokeRasterized(self.strokes[-1], self.states[-1]['rasterized'], self.brushSize)
+            if self.states[-1]['lockedRing'][0]: # If theres already a locked ring
                 if not self.strokes[-1] is new_lockedRing[0][0]: # new stroke has to be put at the start of the list
                     new_signGroups = groupStrokes(self.states[-1]['signGroups'], self.strokes[-1], 'signs', self.signGroupingThreshold)
                     new_sigilGroups = groupStrokes(self.states[-1]['sigilGroups'], self.strokes[-1], 'sigils', self.sigilGroupingThreshold)
+                else:
+                    new_rasterized = addStrokeRasterized(self.strokes[-1], self.states[-1]['rasterized'], self.brushSize)
+                    self.closed, self.valid = closureCheck(new_rasterized)
             else:
-                if new_lockedRing[0]:
-                    new_rasterized = rasterize(self.strokes, self.canvasWidth, self.canvasHeight, self.brushSize)
+                if new_lockedRing[0]: # If a ring is just locked
+                    new_rasterized = rasterize(new_lockedRing[0], self.canvasWidth, self.canvasHeight, self.brushSize)
+                    self.closed, self.valid = closureCheck(new_rasterized)
                     self.signGroupingThreshold = min(25, 0.125*new_lockedRing[2])
                     self.sigilGroupingThreshold = min(40, 0.2*new_lockedRing[2])
                     for stroke in self.strokes:
@@ -213,6 +252,10 @@ class Quire(tk.Frame):
             new_state = {'signGroups': new_signGroups, 'sigilGroups': new_sigilGroups,
                         'ringGroups': new_ringGroups, 'lockedRing': new_lockedRing, 'rasterized': new_rasterized}
             self.states.append(new_state)
+            if self.closed:
+                if self.valid:
+                    print(f'Spell casted. Element: {max(self.states[-1]['sigilGroups'], key=lambda g: g[2])[1]}')
+                else: print('Invalid spell')
 
             if self.labels:
                 for id in self.labels:
@@ -299,6 +342,3 @@ if __name__ == "__main__":
     quire.pack()
     root.mainloop()
     array = quire.states[-1]['rasterized']
-    img = Image.fromarray(array, 'L')
-    img.show()
-    
